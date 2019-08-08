@@ -145,4 +145,39 @@ PersistentKeepalive = 25" > $HOME/wireguard-client.conf
 	
 	echo "Main Client configuration: $HOME/wireguard-client.conf"
 	echo "Please reboot your server for stable connection. Congrats!!1!"
+else
+	NEW_CLIENT="$1"
+	if [ "$NEW_CLIENT" = "" ]; then
+		echo "Say 'The New Client's' Name!"
+		read -p "New VPN Client's name(please use one word): " -e NEW_CLIENT
+	fi
+	
+	CLIENT_PRIVKEY=$( wg genkey )
+    CLIENT_PUBKEY=$( echo $CLIENT_PRIVKEY | wg pubkey )
+    PRIVATE_SUBNET=$( head -n1 $EVERYTHINGISOK | awk '{print $2}')
+    PRIVATE_SUBNET_MASK=$( echo $PRIVATE_SUBNET | cut -d "/" -f 2 )
+    SERVER_ENDPOINT=$( head -n1 $EVERYTHINGISOK | awk '{print $3}')
+    SERVER_PUBKEY=$( head -n1 $EVERYTHINGISOK | awk '{print $4}')
+    DNS=$( head -n1 $EVERYTHINGISOK | awk '{print $5}')
+    LASTIP=$( grep "/32" $EVERYTHINGISOK | tail -n1 | awk '{print $3}' | cut -d "/" -f 1 | cut -d "." -f 4 )
+    CLIENT_ADDRESS="${PRIVATE_SUBNET::-4}$((LASTIP+1))"
+    echo "# $NEW_CLIENT
+[Peer]
+PublicKey = $CLIENT_PUBKEY
+AllowedIPs = $CLIENT_ADDRESS/32" >> $EVERYTHINGISOK
+
+    echo "[Interface]
+PrivateKey = $CLIENT_PRIVKEY
+Address = $CLIENT_ADDRESS/$PRIVATE_SUBNET_MASK
+DNS = $DNS
+[Peer]
+PublicKey = $SERVER_PUBKEY
+AllowedIPs = 0.0.0.0/0, ::/0 
+Endpoint = $SERVER_ENDPOINT
+PersistentKeepalive = 25" > $HOME/$NEW_CLIENT-wg0.conf
+	
+	qrencode -t ansiutf8 -l L < $HOME/$NEW_CLIENT-wg0.conf
+	
+	ip address | grep -q wg0 && wg set wg0 peer "$CLIENT_PUBKEY" allowed-ips "$CLIENT_ADDRESS/32"
+    echo "New VPN Client added. Configuration file --> $HOME/$NEW_CLIENT-wg0.conf"
 fi
